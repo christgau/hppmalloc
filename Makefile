@@ -1,5 +1,6 @@
 CC=gcc
 CFLAGS=-O0 -g -Wall -Wextra -DDEBUG
+LDFLAGS=-lbsd
 LIBRARY_NAME=libhppalloc.so
 
 .PHONY: all
@@ -7,7 +8,7 @@ LIBRARY_NAME=libhppalloc.so
 all: $(LIBRARY_NAME)
 
 $(LIBRARY_NAME): hppalloc.c
-	$(CC) $(CFLAGS) -shared -fPIC $^ -o $@
+	$(CC) $(CFLAGS) $(LDFLAGS) -shared -fPIC $^ -o $@
 
 .PHONY: test
 

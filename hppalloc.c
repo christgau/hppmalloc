@@ -1,3 +1,5 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -7,7 +9,10 @@
 
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <sys/mman.h>
+
+#include <bsd/string.h>
 
 #ifdef DEBUG
 #define debug_print(...) do {\
@@ -78,9 +83,30 @@ static allocation_t* hpp_get_allocation(const void* addr)
 	return NULL;
 }
 
+#define VM_HUGE_PAGES_BASEPATH "/sys/kernel/mm/hugepages/hugepages-"
+
+#ifndef MAP_HUGE_1GB
+#define MAP_HUGE_1GB (30 << MAP_HUGE_SHIFT)
+#define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
+#endif
+
+#define HPP_MAP_BASEFLAGS (MAP_PRIVATE | MAP_ANONYMOUS)
+
+static struct page_type {
+	size_t size;
+	size_t n_avail;
+	size_t offset;
+	int map_fd;
+	int map_flags;
+	char *map_fn;
+	char *base_path;
+} page_types[] = {
+	{ 1U << 30, 0, 0, -1, HPP_MAP_BASEFLAGS | MAP_HUGETLB | MAP_HUGE_1GB, "1G", VM_HUGE_PAGES_BASEPATH "1048576kB" },
+	{ 1U << 21, 0, 0, -1, HPP_MAP_BASEFLAGS | MAP_HUGETLB | MAP_HUGE_2MB, "2M", VM_HUGE_PAGES_BASEPATH "2048kB" },
+	{ 1U << 12, 0, 0, -1, HPP_MAP_BASEFLAGS, "4k", NULL }
+};
 
 static bool is_initialized = false;
-static size_t base_page_size = 0;
 
 static void hpp_init(void)
 {
@@ -88,8 +114,56 @@ static void hpp_init(void)
 		return;
 	}
 
+	/* if a basepath is given, the allocations are backed by files which are created first */
+	for (size_t i = 0; i < sizeof(page_types) / sizeof(page_types[0]); i++) {
+		if (!page_types[i].base_path) {
+			/* one GB by default */
+			page_types[i].n_avail = (1U << 30) / page_types[i].size;
+		}
+
+		char fname[256] = { 0 };
+
+		if (page_types[i].base_path) {
+			strlcat(fname, page_types[i].base_path, sizeof(fname) - 1);
+			strlcat(fname, "/nr_hugepages", sizeof(fname) - 1);
+
+			FILE* f = fopen(fname, "r");
+			if (f != NULL) {
+				fscanf(f, "%zu", &page_types[i].n_avail);
+				fclose(f);
+			}
+		}
+
+		if (page_types[i].n_avail == 0) {
+			continue;
+		}
+
+		if (getenv("HPPA_BASEPATH")) {
+			memset(fname, 0, sizeof(fname));
+			strlcpy(fname, getenv("HPPA_BASEPATH"), sizeof(fname) - 1);
+			strlcat(fname, "/", sizeof(fname) - 1);
+
+			char s[16] = { 0 };
+			snprintf(s, 15, "%d-%s", getpid(), page_types[i].map_fn);
+			strlcat(fname, s, sizeof(fname) - 1);
+
+			int fd = open(fname, O_CREAT | O_RDWR, 0666);
+			if (fd == -1) {
+					debug_print("error opening %s for pagesize %zu: %s (%d)\n", fname, page_types[i].size, strerror(errno), errno);
+					continue;
+			}
+
+			if (fallocate(fd, 0, 0, page_types[i].size * page_types[i].n_avail) == -1) {
+					debug_print("cannot reserve space for pagesize %s: %s (%d)\n", fname, strerror(errno), errno);
+					continue;
+			}
+
+			page_types[i].map_flags = (page_types[i].map_flags & ~(MAP_ANONYMOUS | MAP_PRIVATE)) | MAP_SHARED;
+			page_types[i].map_fd = fd;
+		}
+	}
+
 	is_initialized = true;
-	base_page_size = sysconf(_SC_PAGE_SIZE);
 	hpp_grow_allocations();
 
 	debug_print("initialized\n");
@@ -97,44 +171,33 @@ static void hpp_init(void)
 
 /* actual allocation/deallocation */
 
-#ifndef MAP_HUGE_1GB
-#define MAP_HUGE_1GB (30 << MAP_HUGE_SHIFT)
-#define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
-#endif
-
 #define MMAP_PROT (PROT_READ | PROT_WRITE)
-#define MMAP_BASE_FLAGS  (MAP_ANONYMOUS)
-
 #define ROUND_TO_MULTIPLE(x, n)  ((((x) + (n) - 1) / (n)) * (n))
 
 /* try to mmap the requested memory, but only if size is larger than the page size */
-static void try_mmap(allocation_t *a, int flags, size_t page_size, size_t *offset,
-	char* buf, char* descr)
+static void try_mmap(allocation_t *a, struct page_type *page_type, char *buf)
 {
-	if (a->addr || a->size < page_size) {
+	if (a->addr || a->size < page_type->size || page_type->n_avail == 0) {
 		return;
 	}
 
-	int fd = -1;
-	size_t mmap_size = ROUND_TO_MULTIPLE(a->size, page_size);
-	a->addr = mmap(NULL, mmap_size, MMAP_PROT, flags, fd, *offset);
+	size_t mmap_size = ROUND_TO_MULTIPLE(a->size, page_type->size);
+	a->addr = mmap(NULL, mmap_size, MMAP_PROT, page_type->map_flags, page_type->map_fd, page_type->offset);
 	if (a->addr != MAP_FAILED) {
 		a->size = mmap_size;
 		a->flags |= ALLOC_MMAPPED;
-		if (fd != -1) {
-			*offset += mmap_size;
+		if (page_type->map_fd != -1) {
+			page_type->offset += mmap_size;
 		}
-		strncpy(buf, descr, 2);
+		strncpy(buf, page_type->map_fn, 2);
 	} else {
-		debug_print("alloc failed for %s: %s (%d)\n", descr, strerror(errno), errno);
+		debug_print("alloc failed for %s: %s (%d)\n", page_type->map_fn, strerror(errno), errno);
 		a->addr = NULL;
 	}
 }
 
 void* hpp_alloc(size_t n, size_t elem_size)
 {
-	static size_t alloc_offset = 0;
-	int mmap_flags = MMAP_BASE_FLAGS;
 	char buf[3] = { 0 };
 
 	if (!is_initialized) {
@@ -147,13 +210,10 @@ void* hpp_alloc(size_t n, size_t elem_size)
 		return NULL;
 	}
 
-	mmap_flags |= MAP_PRIVATE;
-
 	a->size = n * elem_size;
-	/* try 1GB huge page, 2MB huge pages, and regular pages size, */
-	try_mmap(a, mmap_flags | MAP_HUGETLB | MAP_HUGE_1GB, 1024 * 1024 * 1024, &alloc_offset, buf, "1G");
-	try_mmap(a, mmap_flags | MAP_HUGETLB | MAP_HUGE_2MB, 2 * 1024 * 1024, &alloc_offset, buf, "2M");
-	try_mmap(a, mmap_flags, base_page_size, &alloc_offset, buf, "4k");
+	for (size_t i = 0; i < sizeof(page_types) / sizeof(page_types[0]); i++) {
+		try_mmap(a, &page_types[i], buf);
+	}
 
 	/* last resort */
 	if (a->addr == NULL) {
@@ -165,7 +225,7 @@ void* hpp_alloc(size_t n, size_t elem_size)
 		debug_print("failed to alloc %zu * %zu Bytes = %zu Bytes\n", n, elem_size, a->size);
 		allocations.count--;
 	} else {
-		debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p (%s)\n", n, elem_size, a->size, a->addr, buf);
+		debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p via %s\n", n, elem_size, a->size, a->addr, buf);
 	}
 
 	return a->addr;
@@ -177,11 +237,6 @@ void hpp_free(void *ptr)
 	allocation_t* a = hpp_get_allocation(ptr);
 	if (!a) {
 		debug_print("unknown allocation at %p\n", a->addr);
-		return;
-	}
-
-	if (a->size == SIZE_MAX) {
-		debug_print("double free at %p detected\n", ptr);
 		return;
 	}
 

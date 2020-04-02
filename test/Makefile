@@ -3,7 +3,7 @@ F90=gfortran
 CFLAGS=-O0 -g -lhppalloc -L..
 FFLAGS=-O0 -g -lhppalloc -L.. -Wall -Wextra -pedantic -Wl,--rpath=.. -fcheck=all -fbacktrace -fdump-fortran-optimized -cpp
 
-TESTS=simple
+TESTS=simple huge
 
 .PHONY: test
 

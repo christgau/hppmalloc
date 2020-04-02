@@ -5,13 +5,6 @@ program simple
     implicit none
 
     interface
-        subroutine hpp_dummy(n, elem_size) bind(C)
-            use iso_c_binding, only: c_size_t
-
-            integer(c_size_t), value :: n
-            integer(c_size_t), value :: elem_size
-        end subroutine
-
         type(c_ptr) function hpp_alloc(n, elem_size) bind(C)
             use iso_c_binding, only: c_ptr, c_size_t
 

@@ -1,5 +1,5 @@
 CC=gcc
-CFLAGS=-O0 -g -Wall -Wextra -DDEBUG
+CFLAGS=-O0 -g -Wall -Wextra -DDEBUG -std=c99
 LDFLAGS=-lbsd
 LIBRARY_NAME=libhppalloc.so
 

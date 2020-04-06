@@ -88,6 +88,7 @@ static allocation_t* hpp_get_allocation(const void* addr)
 #define VM_HUGE_PAGES_BASEPATH "/sys/kernel/mm/hugepages/hugepages-"
 
 #ifndef MAP_HUGE_1GB
+#define MAP_HUGE_SHIFT 26
 #define MAP_HUGE_1GB (30 << MAP_HUGE_SHIFT)
 #define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
 #endif

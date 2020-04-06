@@ -177,7 +177,7 @@ static void hpp_init(void)
 /* try to mmap the requested memory, but only if size is larger than the page size */
 static void try_mmap(allocation_t *a, struct page_type *page_type, char *buf)
 {
-	if (a->addr || a->size < page_type->size || page_type->n_avail == 0) {
+	if (a->size < page_type->size || page_type->n_avail == 0) {
 		return;
 	}
 
@@ -211,7 +211,7 @@ void* hpp_alloc(size_t n, size_t elem_size)
 	}
 
 	a->size = n * elem_size;
-	for (size_t i = 0; i < sizeof(page_types) / sizeof(page_types[0]); i++) {
+	for (size_t i = 0; !a->addr && i < sizeof(page_types) / sizeof(page_types[0]); i++) {
 		try_mmap(a, &page_types[i], buf);
 	}
 

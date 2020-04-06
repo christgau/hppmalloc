@@ -1,5 +1,2 @@
 *.o
 *.so
-test/simple
-test/sizes
-test/huge

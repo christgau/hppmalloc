@@ -1,5 +1,7 @@
 #define _GNU_SOURCE
 
+#include "hppalloc.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -196,7 +198,7 @@ static void try_mmap(allocation_t *a, struct page_type *page_type, char *buf)
 	}
 }
 
-void* hpp_alloc(size_t n, size_t elem_size)
+void* hpp_alloc(size_t n, size_t elem_size, int flags)
 {
 	char buf[3] = { 0 };
 
@@ -216,7 +218,7 @@ void* hpp_alloc(size_t n, size_t elem_size)
 	}
 
 	/* last resort */
-	if (a->addr == NULL) {
+	if ((a->addr == NULL) && !(flags & HPPA_NOMALLOC)) {
 		a->addr = malloc(a->size);
 		strncpy(buf, "m", sizeof(buf));
 	}

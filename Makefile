@@ -1,14 +1,19 @@
 CC=gcc
 CFLAGS=-O0 -g -Wall -Wextra -DDEBUG -std=c99
+F90=gfortran
+FFLAGS=-fsyntax-only -Wall -Wextra
 LDFLAGS=-lbsd
 LIBRARY_NAME=libhppalloc.so
 
 .PHONY: all
 
-all: $(LIBRARY_NAME)
+all: $(LIBRARY_NAME) hppalloc.mod
 
 $(LIBRARY_NAME): hppalloc.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -shared -fPIC $^ -o $@
+
+hppalloc.mod: hppalloc.f90
+	$(F90) $(FFLAGS) $^
 
 .PHONY: test
 

@@ -247,7 +247,7 @@ static void *hpp_block_alloc(heap_t *heap, const size_t size)
 		block = NEXT_BLOCK(block);
 	}
 
-	if (!BLOCK_IN_HEAP(block, heap)) {
+	if (!BLOCK_IN_HEAP(block, heap) || block->size < req_size) {
 		return NULL;
 	}
 

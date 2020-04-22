@@ -63,7 +63,7 @@ typedef struct heap_block {
 #define BLOCK_MASK_SIZE     (~(BLOCK_ALIGN - 1))
 #define BLOCK_MASK_USED     (1U)
 
-#define BLOCK_USED(b)       (b->size & BLOCK_MASK_USED)
+#define BLOCK_USED(b)       (((b)->size & BLOCK_MASK_USED) != 0)
 #define NEXT_BLOCK(b)       (heap_block_t*) (((char*) (b)) + ((b)->size & BLOCK_MASK_SIZE))
 
 
@@ -77,6 +77,19 @@ static struct heap {
 #define BLOCK_IN_HEAP(b_ptr, h)  ADDR_IN_HEAP(b_ptr, h)
 #define BLOCK_FROM_ADDR(x)       (heap_block_t*) ((char*) (x) - ROUND_TO_MULTIPLE(sizeof(heap_block_t), BLOCK_ALIGN))
 
+#ifdef PRINT_HEAP
+static void hpp_print_heap(const struct heap *heap)
+{
+	heap_block_t *block = (heap_block_t*) heap->mapping;
+
+	debug_print("----------------------------------\n");
+	while (BLOCK_IN_HEAP(block, *heap)) {
+		debug_print("block @ %p%c used: %d, size: %zu\n", block,
+			(block == heap->next) ? '*' : ' ', BLOCK_USED(block), block->size & BLOCK_MASK_SIZE);
+		block = NEXT_BLOCK(block);
+	}
+}
+#endif
 
 /* Create single file under base_path which handles all mappings via buddy allocator */
 /* That file might be placed on a NVDIMM namespace. */
@@ -174,6 +187,10 @@ static void hpp_init(void)
 	mapped_heap.next->size = mapped_heap.pool_size;
 	mapped_heap.next->prev = NULL;
 
+#ifdef PRINT_HEAP
+	hpp_print_heap(&mapped_heap);
+#endif
+
 	is_initialized = true;
 
 	debug_print("initialized\n");
@@ -261,6 +278,10 @@ void* hpp_alloc(size_t n, size_t elem_size)
 		debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
 	}
 
+#ifdef PRINT_HEAP
+	hpp_print_heap(&mapped_heap);
+#endif
+
 	return retval;
 }
 
@@ -274,4 +295,8 @@ void hpp_free(void *ptr)
 	heap_block_t* block = BLOCK_FROM_ADDR(ptr);
 	debug_print("free block of %zu Bytes at %p\n", block->size & BLOCK_MASK_SIZE, block);
 	hpp_block_free(block);
+
+#ifdef PRINT_HEAP
+	hpp_print_heap(&mapped_heap);
+#endif
 }

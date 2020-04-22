@@ -25,12 +25,16 @@
 #define debug_print(...)
 #endif
 
+#define HPPA_INT_OPT_BASE        (HPPA_AS_MAX + 1)
+#define HPPA_INT_OPT_PRINT_HEAP  (1 << (HPPA_INT_OPT_BASE + 0))
+
 #define ROUND_TO_MULTIPLE(x, n)  ((((x) + (n) - 1) / (n)) * (n))
 #define ROUND_DOWN_MULTIPLE(x, n) (((x) / (n)) * (n))
 
 #define ENV_BASEPATH "HPPA_BASEPATH"
 #define ENV_POOLSIZE "HPPA_POOLSIZE"
 #define ENV_MINSIZE  "HPPA_MINSIZE"
+#define ENV_PRINTHEAP "HPPA_PRINTHEAP"
 
 #ifndef MAP_HUGE_1GB
 #define MAP_HUGE_SHIFT 26
@@ -90,9 +94,12 @@ static void hpp_init_pooled_heap(heap_t *heap)
 	heap->next->prev = NULL;
 }
 
-#ifdef PRINT_HEAP
 static void hpp_print_heap(const heap_t *heap)
 {
+	if (!(hpp_mode & HPPA_INT_OPT_PRINT_HEAP)) {
+		return;
+	}
+
 	heap_block_t *block = (heap_block_t*) heap->pool;
 
 	debug_print("--- %s %s----------------------------\n", heap->name, !block ? "(empty)" : "");
@@ -103,7 +110,6 @@ static void hpp_print_heap(const heap_t *heap)
 		block = NEXT_BLOCK(block);
 	}
 }
-#endif
 
 /* Create single file under base_path which handles all mappings via buddy allocator */
 /* That file might be placed on a NVDIMM namespace. */
@@ -186,6 +192,13 @@ static void hpp_init(void)
 		return;
 	}
 
+	if (getenv(ENV_PRINTHEAP)) {
+		const char* s = getenv(ENV_PRINTHEAP);
+		if (strcmp(s, "1") == 0 || strcasecmp(s, "true") == 0) {
+			hpp_mode |= HPPA_INT_OPT_PRINT_HEAP;
+		}
+	}
+
 	if (getenv(ENV_POOLSIZE)) {
 		long int size = strtol(getenv(ENV_POOLSIZE), NULL, 10);
 		if (size > 0) {
@@ -203,10 +216,8 @@ static void hpp_init(void)
 		return;
 	}
 
-#ifdef PRINT_HEAP
 	hpp_print_heap(&named_heap);
 	hpp_print_heap(&anon_heap);
-#endif
 
 	is_initialized = true;
 
@@ -288,7 +299,7 @@ static void hpp_block_free(heap_t *heap, heap_block_t *block)
 
 void hpp_set_mode(int mode)
 {
-	hpp_mode = mode;
+	hpp_mode |= (mode & HPPA_AS_MASK);
 }
 
 void* hpp_alloc(size_t n, size_t elem_size)
@@ -318,9 +329,7 @@ void* hpp_alloc(size_t n, size_t elem_size)
 		} else {
 			debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
 		}
-#ifdef PRINT_HEAP
 		hpp_print_heap(heap);
-#endif
 	}
 
 	if (!retval && (hpp_mode & HPPA_AS_MALLOC)) {
@@ -346,9 +355,7 @@ void hpp_free(void *ptr)
 		heap_block_t *block = BLOCK_FROM_ADDR(ptr);
 		debug_print("free block of %zu Bytes at %p\n", block->size & BLOCK_MASK_SIZE, block);
 		hpp_block_free(heap, block);
-#ifdef PRINT_HEAP
 		hpp_print_heap(heap);
-#endif
 	} else {
 		free(ptr);
 	}

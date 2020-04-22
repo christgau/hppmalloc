@@ -28,6 +28,10 @@
 #define ROUND_TO_MULTIPLE(x, n)  ((((x) + (n) - 1) / (n)) * (n))
 #define ROUND_DOWN_MULTIPLE(x, n) (((x) / (n)) * (n))
 
+#define ENV_BASEPATH "HPPA_BASEPATH"
+#define ENV_POOLSIZE "HPPA_POOLSIZE"
+#define ENV_MINSIZE  "HPPA_MINSIZE"
+
 #ifndef MAP_HUGE_1GB
 #define MAP_HUGE_SHIFT 26
 #define MAP_HUGE_1GB (30 << MAP_HUGE_SHIFT)
@@ -47,10 +51,6 @@ static struct page_type {
 	{ 1U << 30, MAP_BASEFLAGS | MAP_HUGETLB | MAP_HUGE_1GB, "1G" },
 	{ 1U << 21, MAP_BASEFLAGS | MAP_HUGETLB | MAP_HUGE_2MB, "2M" }
 };
-
-#define ENV_BASEPATH "HPPA_BASEPATH"
-#define ENV_POOLSIZE "HPPA_POOLSIZE"
-#define ENV_MINSIZE  "HPPA_MINSIZE"
 
 typedef struct heap_block {
 	size_t size;
@@ -73,8 +73,10 @@ typedef struct heap {
 	heap_block_t *next;
 } heap_t;
 
-static heap_t anon_heap = { NULL, "anon", 1U << 30 /* 1GB by default/for testing */, NULL };
-static heap_t named_heap = { NULL, "named", 1U << 30, NULL };
+static heap_t anon_heap = { NULL, "anon", 1U << 31 /* 2GB by default/for testing */, NULL };
+static heap_t named_heap = { NULL, "named", 1U << 31, NULL };
+
+static int hpp_mode = HPPA_AS_ALL;
 
 #define ADDR_IN_HEAP(x, h)       ((char*) (x) < (h)->pool + (h)->size && (char*) (x) >= (h)->pool)
 #define BLOCK_IN_HEAP(b_ptr, h)  ADDR_IN_HEAP(b_ptr, h)
@@ -93,10 +95,11 @@ static void hpp_print_heap(const heap_t *heap)
 {
 	heap_block_t *block = (heap_block_t*) heap->pool;
 
-	debug_print("--- %s %s----------------------------\n", heap->name, !block ? "empty" : "");
+	debug_print("--- %s %s----------------------------\n", heap->name, !block ? "(empty)" : "");
 	while (block && BLOCK_IN_HEAP(block, heap)) {
-		debug_print("block @ %p%c used: %d, size: %zu\n", block,
-			(block == heap->next) ? '*' : ' ', BLOCK_USED(block), block->size & BLOCK_MASK_SIZE);
+		debug_print("block @ %p%c used: %d, size: %zu, prev @ %p\n", block,
+			(block == heap->next) ? '*' : ' ', BLOCK_USED(block),
+			block->size & BLOCK_MASK_SIZE, block->prev);
 		block = NEXT_BLOCK(block);
 	}
 }
@@ -106,7 +109,7 @@ static void hpp_print_heap(const heap_t *heap)
 /* That file might be placed on a NVDIMM namespace. */
 static bool hpp_init_file_backed_mappings(heap_t* heap)
 {
-	if (heap->size == 0 || getenv(ENV_BASEPATH) == NULL) {
+	if (heap->size == 0 || !getenv(ENV_BASEPATH)) {
 		return false;
 	}
 
@@ -151,7 +154,6 @@ static bool hpp_init_file_backed_mappings(heap_t* heap)
 
 	return true;
 }
-
 
 static bool hpp_init_anon_mappings(heap_t* heap)
 {
@@ -277,6 +279,11 @@ static void hpp_block_free(heap_t *heap, heap_block_t *block)
 	}
 }
 
+void hpp_set_mode(int mode)
+{
+	hpp_mode = mode;
+}
+
 void* hpp_alloc(size_t n, size_t elem_size)
 {
 	if (!is_initialized) {
@@ -288,16 +295,18 @@ void* hpp_alloc(size_t n, size_t elem_size)
 	void *retval = NULL;
 	heap_t *heap = NULL;
 
-	if (named_heap.pool) {
+	if (named_heap.pool && (hpp_mode & HPPA_AS_NAMED)) {
 		heap = &named_heap;
-	} else if (anon_heap.pool) {
+	}
+
+	if (!heap && anon_heap.pool && (hpp_mode & HPPA_AS_ANON)) {
 		heap = &anon_heap;
 	}
 
 	if (heap) {
 		retval = hpp_block_alloc(heap, alloc_size);
 
-		if (retval == NULL) {
+		if (!retval) {
 			debug_print("failed to alloc %zu * %zu Bytes = %zu Bytes\n", n, elem_size, alloc_size);
 		} else {
 			debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
@@ -305,6 +314,10 @@ void* hpp_alloc(size_t n, size_t elem_size)
 #ifdef PRINT_HEAP
 		hpp_print_heap(heap);
 #endif
+	}
+
+	if (!retval && (hpp_mode & HPPA_AS_MALLOC)) {
+		retval = malloc(alloc_size);
 	}
 
 	return retval;
@@ -329,5 +342,7 @@ void hpp_free(void *ptr)
 #ifdef PRINT_HEAP
 		hpp_print_heap(heap);
 #endif
+	} else {
+		free(ptr);
 	}
 }

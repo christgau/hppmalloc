@@ -6,6 +6,12 @@
 
     interface
 
+        subroutine hpp_set_mode(mode) bind(C)
+            use iso_c_binding, only: c_int
+
+            integer(c_int), value, intent(in) :: mode
+        end subroutine
+
         type(c_ptr) function hpp_alloc(n, elem_size) bind(C)
             use iso_c_binding, only: c_ptr, c_size_t
 

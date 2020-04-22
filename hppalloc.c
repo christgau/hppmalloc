@@ -276,6 +276,13 @@ static void hpp_block_free(heap_t *heap, heap_block_t *block)
 	/* try to merge with prev */
 	if (block->prev && !BLOCK_USED(block->prev)) {
 		block->prev->size += block->size;
+		block = block->prev;
+	}
+
+	/* update (new) next's prev pointer */
+	next = NEXT_BLOCK(block);
+	if (BLOCK_IN_HEAP(next, heap)) {
+		next->prev = block;
 	}
 }
 

@@ -32,9 +32,10 @@
 #define ROUND_DOWN_MULTIPLE(x, n) (((x) / (n)) * (n))
 
 #define ENV_BASEPATH "HPPA_BASEPATH"
-#define ENV_POOLSIZE "HPPA_POOLSIZE"
-#define ENV_MINSIZE  "HPPA_MINSIZE"
 #define ENV_PRINTHEAP "HPPA_PRINTHEAP"
+#define ENV_ALLOCTHRES "HPPA_ALLOC_THRESHOLD"
+#define ENV_HEAPSIZE_ANON "HPPA_SIZE_ANON"
+#define ENV_HEAPSIZE_NAMED "HPPA_SIZE_NAMED"
 
 #ifndef MAP_HUGE_1GB
 #define MAP_HUGE_SHIFT 26
@@ -81,6 +82,7 @@ static heap_t anon_heap = { NULL, "anon", 1U << 31 /* 2GB by default/for testing
 static heap_t named_heap = { NULL, "named", 1U << 31, NULL };
 
 static int hpp_mode = HPPA_AS_ALL;
+static size_t alloc_threshold = MIN_HUGE_PAGE_SIZE;
 
 #define ADDR_IN_HEAP(x, h)       ((char*) (x) < (h)->pool + (h)->size && (char*) (x) >= (h)->pool)
 #define BLOCK_IN_HEAP(b_ptr, h)  ADDR_IN_HEAP(b_ptr, h)
@@ -186,6 +188,17 @@ static bool hpp_init_anon_mappings(heap_t* heap)
 
 static bool is_initialized = false;
 
+static size_t size_from_s(const char *s, size_t def_val)
+{
+	if (!s) {
+		return def_val;
+	}
+
+	char *endp;
+	long int v = strtol(s, &endp, 10);
+	return (v >= 0 && s != endp ? (size_t) v : def_val);
+}
+
 static void hpp_init(void)
 {
 	if (is_initialized) {
@@ -199,13 +212,9 @@ static void hpp_init(void)
 		}
 	}
 
-	if (getenv(ENV_POOLSIZE)) {
-		long int size = strtol(getenv(ENV_POOLSIZE), NULL, 10);
-		if (size > 0) {
-			anon_heap.size = ROUND_DOWN_MULTIPLE(size, MIN_HUGE_PAGE_SIZE);
-			named_heap.size = anon_heap.size;
-		}
-	}
+	alloc_threshold = size_from_s(ENV_ALLOCTHRES, MIN_HUGE_PAGE_SIZE);
+	anon_heap.size = size_from_s(ENV_HEAPSIZE_ANON, anon_heap.size);
+	named_heap.size = size_from_s(ENV_HEAPSIZE_NAMED, named_heap.size);
 
 	if (!hpp_init_file_backed_mappings(&named_heap)) {
 		debug_print("Unable to init file based mapping.\n");
@@ -321,7 +330,7 @@ void* hpp_alloc(size_t n, size_t elem_size)
 		heap = &anon_heap;
 	}
 
-	if (heap) {
+	if (heap && alloc_size >= alloc_threshold) {
 		retval = hpp_block_alloc(heap, alloc_size);
 
 		if (!retval) {

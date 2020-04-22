@@ -66,24 +66,35 @@ typedef struct heap_block {
 #define BLOCK_USED(b)       (((b)->size & BLOCK_MASK_USED) != 0)
 #define NEXT_BLOCK(b)       (heap_block_t*) (((char*) (b)) + ((b)->size & BLOCK_MASK_SIZE))
 
-
-static struct heap {
-	char *mapping;
-	size_t pool_size;
+typedef struct heap {
+	char *pool;
+	char *name; /* just for convenience */
+	size_t size;
 	heap_block_t *next;
-} mapped_heap = { NULL, 1U << 30 /* 1GB by default/for testing */, NULL };
+} heap_t;
 
-#define ADDR_IN_HEAP(x, h)       ((char*) (x) < (h).mapping + (h).pool_size && (char*) (x) >= (h).mapping)
+static heap_t anon_heap = { NULL, "anon", 1U << 30 /* 1GB by default/for testing */, NULL };
+static heap_t named_heap = { NULL, "named", 1U << 30, NULL };
+
+#define ADDR_IN_HEAP(x, h)       ((char*) (x) < (h)->pool + (h)->size && (char*) (x) >= (h)->pool)
 #define BLOCK_IN_HEAP(b_ptr, h)  ADDR_IN_HEAP(b_ptr, h)
 #define BLOCK_FROM_ADDR(x)       (heap_block_t*) ((char*) (x) - ROUND_TO_MULTIPLE(sizeof(heap_block_t), BLOCK_ALIGN))
 
-#ifdef PRINT_HEAP
-static void hpp_print_heap(const struct heap *heap)
+/* initialize remaining heap stuff, after pool and size have been set */
+static void hpp_init_pooled_heap(heap_t *heap)
 {
-	heap_block_t *block = (heap_block_t*) heap->mapping;
+	heap->next = (heap_block_t*) heap->pool;
+	heap->next->size = heap->size & BLOCK_MASK_SIZE;
+	heap->next->prev = NULL;
+}
 
-	debug_print("----------------------------------\n");
-	while (BLOCK_IN_HEAP(block, *heap)) {
+#ifdef PRINT_HEAP
+static void hpp_print_heap(const heap_t *heap)
+{
+	heap_block_t *block = (heap_block_t*) heap->pool;
+
+	debug_print("--- %s %s----------------------------\n", heap->name, !block ? "empty" : "");
+	while (block && BLOCK_IN_HEAP(block, heap)) {
 		debug_print("block @ %p%c used: %d, size: %zu\n", block,
 			(block == heap->next) ? '*' : ' ', BLOCK_USED(block), block->size & BLOCK_MASK_SIZE);
 		block = NEXT_BLOCK(block);
@@ -93,12 +104,16 @@ static void hpp_print_heap(const struct heap *heap)
 
 /* Create single file under base_path which handles all mappings via buddy allocator */
 /* That file might be placed on a NVDIMM namespace. */
-static bool hpp_init_file_backed_mappings(const char* base_path)
+static bool hpp_init_file_backed_mappings(heap_t* heap)
 {
+	if (heap->size == 0 || getenv(ENV_BASEPATH) == NULL) {
+		return false;
+	}
+
 	const size_t fname_size = 256;
 	char fname[fname_size];
 
-	strlcpy(fname, base_path, fname_size - 1);
+	strlcpy(fname, getenv(ENV_BASEPATH), fname_size - 1);
 	strlcat(fname, "/", fname_size - 1);
 
 	char s[8] = { 0 };
@@ -111,44 +126,53 @@ static bool hpp_init_file_backed_mappings(const char* base_path)
 		return false;
 	}
 
-	if (fallocate(fd, 0, 0, mapped_heap.pool_size) == -1) {
+	if (fallocate(fd, 0, 0, heap->size) == -1) {
 		debug_print("Cannot reserve space in mapfile %s: %s (%d)\n", fname, strerror(errno), errno);
 		return false;
 	}
 
 	/* map the whole file into memory and beg for huge pages */
-	mapped_heap.mapping = mmap(NULL, mapped_heap.pool_size, MMAP_PROT, MAP_SHARED, fd, 0);
-	if (mapped_heap.mapping == MAP_FAILED) {
+	heap->pool = mmap(NULL, heap->size, MMAP_PROT, MAP_SHARED, fd, 0);
+	if (heap->pool == MAP_FAILED) {
+		heap->pool = NULL;
 		debug_print("mmap of mapfile failed: %s (%d)", strerror(errno), errno);
 		close(fd);
 		return false;
 	}
 
-	if (madvise(mapped_heap.mapping, mapped_heap.pool_size, MADV_WILLNEED | MADV_HUGEPAGE | MADV_DONTFORK)) {
+	if (madvise(heap->pool, heap->size, MADV_WILLNEED | MADV_HUGEPAGE | MADV_DONTFORK)) {
 		debug_print("madvise failed: %s (%d), but going ahead", strerror(errno), errno);
 	}
 
  	/* according to mmap(2) it is safe to close the file after mmap */
 	close(fd);
 
+	hpp_init_pooled_heap(heap);
+
 	return true;
 }
 
 
-static bool hpp_init_anon_mappings()
+static bool hpp_init_anon_mappings(heap_t* heap)
 {
+	if (heap->size == 0) {
+		return false;
+	}
+
 	for (size_t i = 0; i < sizeof(page_types) / sizeof(page_types[0]); i++) {
 		struct page_type pt = page_types[i];
-		size_t mmap_size = ROUND_DOWN_MULTIPLE(mapped_heap.pool_size, pt.size);
-		mapped_heap.mapping = mmap(NULL, mmap_size, MMAP_PROT, pt.map_flags, -1, 0);
-		if (mapped_heap.mapping != MAP_FAILED) {
-			mapped_heap.pool_size = mmap_size;
+		size_t mmap_size = ROUND_DOWN_MULTIPLE(heap->size, pt.size);
+		heap->pool = mmap(NULL, mmap_size, MMAP_PROT, pt.map_flags, -1, 0);
+		if (heap->pool != MAP_FAILED) {
+			heap->size = mmap_size;
+			hpp_init_pooled_heap(heap);
 			return true;
 		} else {
 			debug_print("mmap failed for %s: %s (%d)\n", pt.name, strerror(errno), errno);
 		}
 	}
 
+	heap->pool = NULL;
 	return false;
 }
 
@@ -161,34 +185,25 @@ static void hpp_init(void)
 	}
 
 	if (getenv(ENV_POOLSIZE)) {
-		size_t size = strtol(getenv(ENV_POOLSIZE), NULL, 10);
-		if (size > mapped_heap.pool_size) {
-			mapped_heap.pool_size = ROUND_DOWN_MULTIPLE(size, MIN_HUGE_PAGE_SIZE);
+		long int size = strtol(getenv(ENV_POOLSIZE), NULL, 10);
+		if (size > 0) {
+			anon_heap.size = ROUND_DOWN_MULTIPLE(size, MIN_HUGE_PAGE_SIZE);
+			named_heap.size = anon_heap.size;
 		}
 	}
 
-	if (getenv(ENV_BASEPATH)) {
-		if (!hpp_init_file_backed_mappings(getenv(ENV_BASEPATH))) {
-			debug_print("Unable to init file based mapping. Exiting.\n");
-			exit(99);
-			/* just in case */
-			return;
-		}
-	} else {
-		if (!hpp_init_anon_mappings()) {
-			debug_print("Unable to init via hugepage mmap. Please, check available hugepages! Exiting.\n");
-			exit(99);
-			return;
-		}
+	if (!hpp_init_file_backed_mappings(&named_heap)) {
+		debug_print("Unable to init file based mapping.\n");
 	}
 
-	/* init heap */
-	mapped_heap.next = (heap_block_t*) mapped_heap.mapping;
-	mapped_heap.next->size = mapped_heap.pool_size;
-	mapped_heap.next->prev = NULL;
+	if (!hpp_init_anon_mappings(&anon_heap)) {
+		debug_print("Unable to init via hugepage mmap. Please, check available hugepages! Exiting.\n");
+		return;
+	}
 
 #ifdef PRINT_HEAP
-	hpp_print_heap(&mapped_heap);
+	hpp_print_heap(&named_heap);
+	hpp_print_heap(&anon_heap);
 #endif
 
 	is_initialized = true;
@@ -198,19 +213,19 @@ static void hpp_init(void)
 
 /* actual allocation/deallocation */
 
-static void *hpp_block_alloc(size_t size)
+static void *hpp_block_alloc(heap_t *heap, const size_t size)
 {
 	/* waste at least one cacheline for meta data to ensure proper alignment */
 	size_t req_size = ROUND_TO_MULTIPLE(size, BLOCK_ALIGN) +
 		ROUND_TO_MULTIPLE(sizeof(heap_block_t), BLOCK_ALIGN);
 
 	/* search for free and large enough block */
-	heap_block_t* block = mapped_heap.next;
-	while (BLOCK_IN_HEAP(block, mapped_heap) && BLOCK_USED(block) && block->size < req_size) {
+	heap_block_t* block = heap->next;
+	while (BLOCK_IN_HEAP(block, heap) && BLOCK_USED(block) && block->size < req_size) {
 		block = NEXT_BLOCK(block);
 	}
 
-	if (!BLOCK_IN_HEAP(block, mapped_heap)) {
+	if (!BLOCK_IN_HEAP(block, heap)) {
 		return NULL;
 	}
 
@@ -228,11 +243,11 @@ static void *hpp_block_alloc(size_t size)
 
 		/* The splitted block is a free block. The next search starts there,
 		 * if the current search started at the current block. */
-		if (mapped_heap.next == block) {
-			mapped_heap.next = new_block;
+		if (heap->next == block) {
+			heap->next = new_block;
 		}
 
-		if (BLOCK_IN_HEAP(old_next, mapped_heap)) {
+		if (BLOCK_IN_HEAP(old_next, heap)) {
 			old_next->prev = new_block;
 		}
 	}
@@ -242,17 +257,17 @@ static void *hpp_block_alloc(size_t size)
 	return (char*) block + ROUND_TO_MULTIPLE(sizeof(heap_block_t), BLOCK_ALIGN);
 }
 
-static void hpp_block_free(heap_block_t *block)
+static void hpp_block_free(heap_t *heap, heap_block_t *block)
 {
 	/* reset flags */
 	block->size = block->size & BLOCK_MASK_SIZE;
-	if (block < mapped_heap.next) {
-		mapped_heap.next = block;
+	if (block < heap->next) {
+		heap->next = block;
 	}
 
 	/* try to merge with next */
 	heap_block_t *next = NEXT_BLOCK(block);
-	if (BLOCK_IN_HEAP(next, mapped_heap) && !BLOCK_USED(next)) {
+	if (BLOCK_IN_HEAP(next, heap) && !BLOCK_USED(next)) {
 		block->size += next->size;
 	}
 
@@ -270,17 +285,27 @@ void* hpp_alloc(size_t n, size_t elem_size)
 
 	/* no overflow checks as in calloc here */
 	size_t alloc_size = n * elem_size;
-	void* retval = hpp_block_alloc(alloc_size);
+	void *retval = NULL;
+	heap_t *heap = NULL;
 
-	if (retval == NULL) {
-		debug_print("failed to alloc %zu * %zu Bytes = %zu Bytes\n", n, elem_size, alloc_size);
-	} else {
-		debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
+	if (named_heap.pool) {
+		heap = &named_heap;
+	} else if (anon_heap.pool) {
+		heap = &anon_heap;
 	}
 
+	if (heap) {
+		retval = hpp_block_alloc(heap, alloc_size);
+
+		if (retval == NULL) {
+			debug_print("failed to alloc %zu * %zu Bytes = %zu Bytes\n", n, elem_size, alloc_size);
+		} else {
+			debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
+		}
 #ifdef PRINT_HEAP
-	hpp_print_heap(&mapped_heap);
+		hpp_print_heap(heap);
 #endif
+	}
 
 	return retval;
 }
@@ -288,15 +313,21 @@ void* hpp_alloc(size_t n, size_t elem_size)
 
 void hpp_free(void *ptr)
 {
-	if (!ADDR_IN_HEAP(ptr, mapped_heap)) {
-		return;
+	heap_t *heap = NULL;
+	if (ADDR_IN_HEAP(ptr, &anon_heap)) {
+		heap = &anon_heap;
 	}
 
-	heap_block_t* block = BLOCK_FROM_ADDR(ptr);
-	debug_print("free block of %zu Bytes at %p\n", block->size & BLOCK_MASK_SIZE, block);
-	hpp_block_free(block);
+	if (ADDR_IN_HEAP(ptr, &named_heap)) {
+		heap = &named_heap;
+	}
 
+	if (heap) {
+		heap_block_t *block = BLOCK_FROM_ADDR(ptr);
+		debug_print("free block of %zu Bytes at %p\n", block->size & BLOCK_MASK_SIZE, block);
+		hpp_block_free(heap, block);
 #ifdef PRINT_HEAP
-	hpp_print_heap(&mapped_heap);
+		hpp_print_heap(heap);
 #endif
+	}
 }

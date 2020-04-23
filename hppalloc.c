@@ -31,8 +31,8 @@
 #define ROUND_TO_MULTIPLE(x, n)  ((((x) + (n) - 1) / (n)) * (n))
 #define ROUND_DOWN_MULTIPLE(x, n) (((x) / (n)) * (n))
 
-#define ENV_BASEPATH "HPPA_BASEPATH"
-#define ENV_PRINTHEAP "HPPA_PRINTHEAP"
+#define ENV_BASEPATH "HPPA_BASE_PATH"
+#define ENV_PRINTHEAP "HPPA_PRINT_HEAP"
 #define ENV_ALLOCTHRES "HPPA_ALLOC_THRESHOLD"
 #define ENV_HEAPSIZE_ANON "HPPA_SIZE_ANON"
 #define ENV_HEAPSIZE_NAMED "HPPA_SIZE_NAMED"
@@ -104,13 +104,20 @@ static void hpp_print_heap(const heap_t *heap)
 
 	heap_block_t *block = (heap_block_t*) heap->pool;
 
+	int n_blocks = 0;
+	size_t total_size = 0;
+
 	debug_print("--- %s %s----------------------------\n", heap->name, !block ? "(empty)" : "");
 	while (block && BLOCK_IN_HEAP(block, heap)) {
 		debug_print("block @ %p%c used: %d, size: %zu, prev @ %p\n", block,
 			(block == heap->next) ? '*' : ' ', BLOCK_USED(block),
 			block->size & BLOCK_MASK_SIZE, block->prev);
+		total_size += block->size & BLOCK_MASK_SIZE;
 		block = NEXT_BLOCK(block);
+		n_blocks++;
 	}
+
+	debug_print("total: %d blocks, %zu bytes\n", n_blocks, total_size);
 }
 
 /* Create single file under base_path which handles all mappings via buddy allocator */

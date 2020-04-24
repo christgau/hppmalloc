@@ -19,6 +19,8 @@ program simple
     ptr_2M = hpp_alloc(N_2M * 1_size_t_kind, storage_size(N_2M) / 8_size_t_kind)
     ptr_1G = hpp_alloc(N_1G * 1_size_t_kind, storage_size(N_1G) / 8_size_t_kind)
 
+    write (*,*) "+++free"
+
     call hpp_free(ptr_4k)
     call hpp_free(ptr_2M)
     call hpp_free(ptr_1G)

@@ -1,0 +1,4 @@
+#!/bin/sh
+
+./toohuge
+exit $?

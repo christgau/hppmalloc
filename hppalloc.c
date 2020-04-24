@@ -36,6 +36,7 @@
 #define ENV_ALLOCTHRES "HPPA_ALLOC_THRESHOLD"
 #define ENV_HEAPSIZE_ANON "HPPA_SIZE_ANON"
 #define ENV_HEAPSIZE_NAMED "HPPA_SIZE_NAMED"
+#define ENV_INITAS "HPPA_INITIAL_STRATEGY"
 
 #ifndef MAP_HUGE_1GB
 #define MAP_HUGE_SHIFT 26
@@ -217,6 +218,12 @@ static void hpp_init(void)
 		if (strcmp(s, "1") == 0 || strcasecmp(s, "true") == 0) {
 			hpp_mode |= HPPA_INT_OPT_PRINT_HEAP;
 		}
+	}
+
+	if (getenv(ENV_INITAS)) {
+		/* Replace initial allocation strategy. This is a little unsafe, due to strtol. */
+		hpp_mode = (hpp_mode & ~HPPA_AS_MASK) |
+			(strtol(getenv(ENV_INITAS), NULL, 10) & HPPA_AS_MASK);
 	}
 
 	alloc_threshold = size_from_s(ENV_ALLOCTHRES, MIN_HUGE_PAGE_SIZE);

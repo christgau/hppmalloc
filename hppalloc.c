@@ -163,8 +163,10 @@ static bool hpp_init_file_backed_mappings(heap_t* heap)
 		debug_print("madvise failed: %s (%d), but going ahead", strerror(errno), errno);
 	}
 
- 	/* according to mmap(2) it is safe to close the file after mmap */
+	/* according to mmap(2) it is safe to close the file after mmap
+	 * and to delete as well as it causes an additional reference */
 	close(fd);
+	unlink(fname);
 
 	hpp_init_pooled_heap(heap);
 

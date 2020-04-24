@@ -1,4 +1,3 @@
-CC=gcc
 CFLAGS=-O0 -g -Wall -Wextra -DDEBUG -std=c99
 F90=gfortran
 FFLAGS=-fsyntax-only -Wall -Wextra

@@ -25,6 +25,14 @@
 #define debug_print(...)
 #endif
 
+#ifdef HPPA_EXTERN_MALLOC
+extern void* (*hpp_libc_malloc)(size_t n);
+extern void (*hpp_libc_free)(void *ptr);
+#else
+#define hpp_libc_malloc(n)  malloc(n)
+#define hpp_libc_free(ptr)  free(ptr)
+#endif
+
 #define HPPA_INT_OPT_BASE        (HPPA_AS_MAX + 1)
 #define HPPA_INT_OPT_PRINT_HEAP  (1 << (HPPA_INT_OPT_BASE + 0))
 
@@ -329,12 +337,20 @@ void hpp_set_mode(int mode)
 
 void* hpp_alloc(size_t n, size_t elem_size)
 {
-	if (!is_initialized) {
-		hpp_init();
-	}
-
 	/* no overflow checks as in calloc here */
 	size_t alloc_size = n * elem_size;
+	static bool in_init = false;
+
+	if (in_init) {
+		return hpp_libc_malloc(alloc_size);
+	}
+
+	if (!is_initialized) {
+		in_init = true;
+		hpp_init();
+		in_init = false;
+	}
+
 	void *retval = NULL;
 	heap_t *heap = NULL;
 
@@ -358,7 +374,7 @@ void* hpp_alloc(size_t n, size_t elem_size)
 	}
 
 	if (!retval && (hpp_mode & HPPA_AS_MALLOC)) {
-		retval = malloc(alloc_size);
+		retval = hpp_libc_malloc(alloc_size);
 	}
 
 	return retval;
@@ -386,6 +402,6 @@ void hpp_free(void *ptr)
 		hpp_block_free(heap, block);
 		hpp_print_heap(heap);
 	} else {
-		free(ptr);
+		hpp_libc_free(ptr);
 	}
 }

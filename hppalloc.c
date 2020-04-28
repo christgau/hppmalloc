@@ -367,6 +367,10 @@ void* hpp_alloc(size_t n, size_t elem_size)
 
 void hpp_free(void *ptr)
 {
+	if (!ptr) {
+		return;
+	}
+
 	heap_t *heap = NULL;
 	if (ADDR_IN_HEAP(ptr, &anon_heap)) {
 		heap = &anon_heap;

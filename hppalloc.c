@@ -245,8 +245,7 @@ static void hpp_init(void)
 	}
 
 	if (!hpp_init_anon_mappings(&anon_heap)) {
-		debug_print("Unable to init via hugepage mmap. Please, check available hugepages! Exiting.\n");
-		return;
+		debug_print("Unable to init via hugepage mmap. Please, check available hugepages!\n");
 	}
 
 	hpp_print_heap(&named_heap);

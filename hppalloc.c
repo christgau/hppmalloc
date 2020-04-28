@@ -236,9 +236,9 @@ static void hpp_init(void)
 			(strtol(getenv(ENV_INITAS), NULL, 10) & HPPA_AS_MASK);
 	}
 
-	alloc_threshold = size_from_s(ENV_ALLOCTHRES, MIN_HUGE_PAGE_SIZE);
-	anon_heap.size = size_from_s(ENV_HEAPSIZE_ANON, anon_heap.size);
-	named_heap.size = size_from_s(ENV_HEAPSIZE_NAMED, named_heap.size);
+	alloc_threshold = size_from_s(getenv(ENV_ALLOCTHRES), MIN_HUGE_PAGE_SIZE);
+	anon_heap.size = size_from_s(getenv(ENV_HEAPSIZE_ANON), anon_heap.size);
+	named_heap.size = size_from_s(getenv(ENV_HEAPSIZE_NAMED), named_heap.size);
 
 	if (!hpp_init_file_backed_mappings(&named_heap)) {
 		debug_print("Unable to init file based mapping.\n");

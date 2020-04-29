@@ -23,7 +23,7 @@ int main(void)
 			int block = rand() % N_BLOCKS;
 			if (blocks[block]) {
 				hpp_free(blocks[block]);
-				blocks[i] = NULL;
+				blocks[block] = NULL;
 			}
 		}
 

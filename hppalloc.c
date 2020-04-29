@@ -93,7 +93,7 @@ static heap_t named_heap = { NULL, "named", 1U << 31, NULL };
 static int hpp_mode = HPPA_AS_ALL;
 static size_t alloc_threshold = MIN_HUGE_PAGE_SIZE;
 
-#define ADDR_IN_HEAP(x, h)       ((char*) (x) < (h)->pool + (h)->size && (char*) (x) >= (h)->pool)
+#define ADDR_IN_HEAP(x, h)       ((h)->pool && ((char*) (x) < (h)->pool + (h)->size && (char*) (x) >= (h)->pool))
 #define BLOCK_IN_HEAP(b_ptr, h)  ADDR_IN_HEAP(b_ptr, h)
 #define BLOCK_FROM_ADDR(x)       (heap_block_t*) ((char*) (x) - ROUND_TO_MULTIPLE(sizeof(heap_block_t), BLOCK_ALIGN))
 

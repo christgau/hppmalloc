@@ -1,5 +1,9 @@
 program simple
 
+!-- Test the Fortran/C binding to hppalloc. Under the hood, hppalloc may
+!-- use malloc, but this is not the point here. Other tests cover the
+!-- allocation strategy.
+
     use iso_c_binding, only: c_ptr, c_sizeof, c_f_pointer, c_size_t
     use hppmalloc
 

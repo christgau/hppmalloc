@@ -340,36 +340,38 @@ void* hpp_alloc(size_t n, size_t elem_size)
 	size_t alloc_size = n * elem_size;
 	static bool in_init = false;
 
-	if (in_init) {
+	if (__builtin_expect(in_init, 0)) {
 		return hpp_libc_malloc(alloc_size);
 	}
 
-	if (!is_initialized) {
+	if (__builtin_expect(!is_initialized, 0)) {
 		in_init = true;
 		hpp_init();
 		in_init = false;
 	}
 
 	void *retval = NULL;
-	heap_t *heap = NULL;
 
-	if (named_heap.pool && (hpp_mode & HPPA_AS_NAMED)) {
-		heap = &named_heap;
-	}
-
-	if (!heap && anon_heap.pool && (hpp_mode & HPPA_AS_ANON)) {
-		heap = &anon_heap;
-	}
-
-	if (heap && alloc_size >= alloc_threshold) {
-		retval = hpp_block_alloc(heap, alloc_size);
-
-		if (!retval) {
-			debug_print("failed to alloc %zu * %zu Bytes = %zu Bytes\n", n, elem_size, alloc_size);
-		} else {
-			debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
+	if (__builtin_expect(alloc_size >= alloc_threshold, 0)) {
+		heap_t *heap = NULL;
+		if (named_heap.pool && (hpp_mode & HPPA_AS_NAMED)) {
+			heap = &named_heap;
 		}
-		hpp_print_heap(heap);
+
+		if (!heap && anon_heap.pool && (hpp_mode & HPPA_AS_ANON)) {
+			heap = &anon_heap;
+		}
+
+		if (heap) {
+			retval = hpp_block_alloc(heap, alloc_size);
+
+			if (!retval) {
+				debug_print("failed to alloc %zu * %zu Bytes = %zu Bytes\n", n, elem_size, alloc_size);
+			} else {
+				debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
+			}
+			hpp_print_heap(heap);
+		}
 	}
 
 	if (!retval && (hpp_mode & HPPA_AS_MALLOC)) {

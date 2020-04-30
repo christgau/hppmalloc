@@ -52,7 +52,7 @@ extern void (*hpp_libc_free)(void *ptr);
 #define MAP_HUGE_2MB (21 << MAP_HUGE_SHIFT)
 #endif
 
-#define MIN_HUGE_PAGE_SIZE (1U << 21)
+#define MIN_HUGE_PAGE_SIZE (1 << 21)
 
 #define MAP_BASEFLAGS (MAP_PRIVATE | MAP_ANONYMOUS)
 #define MMAP_PROT (PROT_READ | PROT_WRITE)
@@ -62,8 +62,8 @@ static struct page_type {
 	int map_flags;
 	char *name;
 } page_types[] = {
-	{ 1U << 30, MAP_BASEFLAGS | MAP_HUGETLB | MAP_HUGE_1GB, "1G" },
-	{ 1U << 21, MAP_BASEFLAGS | MAP_HUGETLB | MAP_HUGE_2MB, "2M" }
+	{ 1 << 30, MAP_BASEFLAGS | MAP_HUGETLB | MAP_HUGE_1GB, "1G" },
+	{ 1 << 21, MAP_BASEFLAGS | MAP_HUGETLB | MAP_HUGE_2MB, "2M" }
 };
 
 typedef struct heap_block {
@@ -73,9 +73,9 @@ typedef struct heap_block {
 
 /* align to cache line */
 #define BLOCK_SHIFT         6
-#define BLOCK_ALIGN         (1U << BLOCK_SHIFT)
+#define BLOCK_ALIGN         (1 << BLOCK_SHIFT)
 #define BLOCK_MASK_SIZE     (~(BLOCK_ALIGN - 1))
-#define BLOCK_MASK_USED     (1U)
+#define BLOCK_MASK_USED     (1)
 
 #define BLOCK_USED(b)       (((b)->size & BLOCK_MASK_USED) != 0)
 #define NEXT_BLOCK(b)       (heap_block_t*) (((char*) (b)) + ((b)->size & BLOCK_MASK_SIZE))
@@ -87,8 +87,8 @@ typedef struct heap {
 	heap_block_t *next;
 } heap_t;
 
-static heap_t anon_heap = { NULL, "anon", 1U << 31 /* 2GB by default/for testing */, NULL };
-static heap_t named_heap = { NULL, "named", 1U << 31, NULL };
+static heap_t anon_heap = { NULL, "anon", 1UL << 31 /* 2GB by default/for testing */, NULL };
+static heap_t named_heap = { NULL, "named", 1UL << 31, NULL };
 
 static int hpp_mode = HPPA_AS_ALL;
 static size_t alloc_threshold = MIN_HUGE_PAGE_SIZE;

@@ -266,7 +266,7 @@ static void *hpp_block_alloc(heap_t *heap, const size_t size)
 
 	/* search for free and large enough block */
 	heap_block_t* block = heap->next;
-	while (BLOCK_IN_HEAP(block, heap) && BLOCK_USED(block) && block->size < req_size) {
+	while (BLOCK_IN_HEAP(block, heap) && (BLOCK_USED(block) || block->size < req_size)) {
 		block = NEXT_BLOCK(block);
 	}
 

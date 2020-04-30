@@ -17,12 +17,19 @@
 #include <bsd/string.h>
 
 #ifdef DEBUG
-#define debug_print(...) do {\
-	fprintf(stdout, "[hpp] ");\
-	fprintf(stdout, ##__VA_ARGS__);\
+/* only used for LOG_level values */
+#include <syslog.h>
+static char* log_level_str[] = {
+	"EMERG", "ALERT", "CRIT", "ERR", "WARN", "NOTE", "INFO", "DEBUG"
+};
+#define log(msg_level, ...) do {\
+	if (log_level >= msg_level) { \
+		fprintf(stdout, "[hpp] %5s ", log_level_str[msg_level]);\
+		fprintf(stdout, ##__VA_ARGS__);\
+	} \
 } while (false)
 #else
-#define debug_print(...)
+#define log(msg_level, ...)
 #endif
 
 #ifdef HPPA_EXTERN_MALLOC
@@ -45,6 +52,7 @@ extern void (*hpp_libc_free)(void *ptr);
 #define ENV_HEAPSIZE_ANON "HPPA_SIZE_ANON"
 #define ENV_HEAPSIZE_NAMED "HPPA_SIZE_NAMED"
 #define ENV_INITAS "HPPA_INITIAL_STRATEGY"
+#define ENV_LOGLEVEL "HPPA_LOGLEVEL"
 
 #ifndef MAP_HUGE_1GB
 #define MAP_HUGE_SHIFT 26
@@ -90,6 +98,10 @@ typedef struct heap {
 static heap_t anon_heap = { NULL, "anon", 1UL << 31 /* 2GB by default/for testing */, NULL };
 static heap_t named_heap = { NULL, "named", 1UL << 31, NULL };
 
+#ifdef DEBUG
+static int log_level = LOG_ERR;
+#endif
+
 static int hpp_mode = HPPA_AS_ALL;
 static size_t alloc_threshold = MIN_HUGE_PAGE_SIZE;
 
@@ -116,9 +128,9 @@ static void hpp_print_heap(const heap_t *heap)
 	int n_blocks = 0;
 	size_t total_size = 0;
 
-	debug_print("--- %s %s----------------------------\n", heap->name, !block ? "(empty)" : "");
+	log(LOG_DEBUG, "--- %s %s----------------------------\n", heap->name, !block ? "(empty)" : "");
 	while (block && BLOCK_IN_HEAP(block, heap)) {
-		debug_print("block @ %p%c used: %d, size: %zu, prev @ %p\n", block,
+		log(LOG_DEBUG, "block @ %p%c used: %d, size: %zu, prev @ %p\n", block,
 			(block == heap->next) ? '*' : ' ', BLOCK_USED(block),
 			block->size & BLOCK_MASK_SIZE, block->prev);
 		total_size += block->size & BLOCK_MASK_SIZE;
@@ -126,7 +138,7 @@ static void hpp_print_heap(const heap_t *heap)
 		n_blocks++;
 	}
 
-	debug_print("total: %d blocks, %zu bytes\n", n_blocks, total_size);
+	log(LOG_DEBUG, "total: %d blocks, %zu bytes\n", n_blocks, total_size);
 }
 
 /* Create single file under base_path which handles all mappings via buddy allocator */
@@ -149,12 +161,12 @@ static bool hpp_init_file_backed_mappings(heap_t* heap)
 
 	int fd = open(fname, O_CREAT | O_RDWR, 0666);
 	if (fd == -1) {
-		debug_print("Error opening mapfile %s: %s (%d)\n", fname, strerror(errno), errno);
+		log(LOG_ERR, "Error opening mapfile %s: %s (%d)\n", fname, strerror(errno), errno);
 		return false;
 	}
 
 	if (fallocate(fd, 0, 0, heap->size) == -1) {
-		debug_print("Cannot reserve space in mapfile %s: %s (%d)\n", fname, strerror(errno), errno);
+		log(LOG_ERR, "Cannot reserve space in mapfile %s: %s (%d)\n", fname, strerror(errno), errno);
 		return false;
 	}
 
@@ -162,13 +174,13 @@ static bool hpp_init_file_backed_mappings(heap_t* heap)
 	heap->pool = mmap(NULL, heap->size, MMAP_PROT, MAP_SHARED, fd, 0);
 	if (heap->pool == MAP_FAILED) {
 		heap->pool = NULL;
-		debug_print("mmap of mapfile failed: %s (%d)", strerror(errno), errno);
+		log(LOG_ERR, "mmap of mapfile failed: %s (%d)", strerror(errno), errno);
 		close(fd);
 		return false;
 	}
 
 	if (madvise(heap->pool, heap->size, MADV_WILLNEED | MADV_HUGEPAGE | MADV_DONTFORK)) {
-		debug_print("madvise failed: %s (%d), but going ahead", strerror(errno), errno);
+		log(LOG_WARNING, "madvise failed: %s (%d), but going ahead", strerror(errno), errno);
 	}
 
 	/* according to mmap(2) it is safe to close the file after mmap
@@ -196,7 +208,7 @@ static bool hpp_init_anon_mappings(heap_t* heap)
 			hpp_init_pooled_heap(heap);
 			return true;
 		} else {
-			debug_print("mmap failed for %s: %s (%d)\n", pt.name, strerror(errno), errno);
+			log(LOG_ERR, "mmap failed for %zu Bytes with %s: %s (%d)\n", mmap_size, pt.name, strerror(errno), errno);
 		}
 	}
 
@@ -216,6 +228,25 @@ static size_t size_from_s(const char *s, size_t def_val)
 	long int v = strtol(s, &endp, 10);
 	return (v >= 0 && s != endp ? (size_t) v : def_val);
 }
+
+#ifdef DEBUG
+void hpp_init_log_level(const char* s)
+{
+	/* lazy here */
+	int level = size_from_s(s, 0xFF);
+	
+	if (level >= LOG_EMERG && level <= LOG_DEBUG) {
+		log_level = level;
+	}
+
+	for (int i = LOG_EMERG; s && i <= LOG_DEBUG; i++) {
+		if (strcasecmp(s, log_level_str[i]) == 0) {
+			log_level = i;
+			break;
+		}
+	}
+}
+#endif
 
 static void hpp_init(void)
 {
@@ -241,19 +272,23 @@ static void hpp_init(void)
 	named_heap.size = size_from_s(getenv(ENV_HEAPSIZE_NAMED), named_heap.size);
 
 	if (!hpp_init_file_backed_mappings(&named_heap)) {
-		debug_print("Unable to init file based mapping.\n");
+		log(LOG_ERR, "Unable to init file based mapping.\n");
 	}
 
 	if (!hpp_init_anon_mappings(&anon_heap)) {
-		debug_print("Unable to init via hugepage mmap. Please, check available hugepages!\n");
+		log(LOG_ERR, "Unable to init via hugepage mmap. Please, check available hugepages!\n");
 	}
+
+#ifdef DEBUG
+	hpp_init_log_level(getenv(ENV_LOGLEVEL));
+#endif
 
 	hpp_print_heap(&named_heap);
 	hpp_print_heap(&anon_heap);
 
 	is_initialized = true;
 
-	debug_print("initialized\n");
+	log(LOG_INFO, "initialized\n");
 }
 
 /* actual allocation/deallocation */
@@ -366,9 +401,9 @@ void* hpp_alloc(size_t n, size_t elem_size)
 			retval = hpp_block_alloc(heap, alloc_size);
 
 			if (!retval) {
-				debug_print("failed to alloc %zu * %zu Bytes = %zu Bytes\n", n, elem_size, alloc_size);
+				log(LOG_DEBUG, "failed to alloc %zu * %zu Bytes = %zu Bytes\n", n, elem_size, alloc_size);
 			} else {
-				debug_print("allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
+				log(LOG_DEBUG, "allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
 			}
 			hpp_print_heap(heap);
 		}
@@ -399,7 +434,7 @@ void hpp_free(void *ptr)
 
 	if (heap) {
 		heap_block_t *block = BLOCK_FROM_ADDR(ptr);
-		debug_print("free block of %zu Bytes at %p\n", block->size & BLOCK_MASK_SIZE, block);
+		log(LOG_DEBUG, "free block of %zu Bytes at %p\n", block->size & BLOCK_MASK_SIZE, block);
 		hpp_block_free(heap, block);
 		hpp_print_heap(heap);
 	} else {

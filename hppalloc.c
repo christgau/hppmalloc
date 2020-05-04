@@ -117,6 +117,7 @@ static void hpp_init_pooled_heap(heap_t *heap)
 	heap->next->prev = NULL;
 }
 
+#ifdef DEBUG
 static void hpp_print_heap(const heap_t *heap)
 {
 	if (!(hpp_mode & HPPA_INT_OPT_PRINT_HEAP)) {
@@ -140,6 +141,9 @@ static void hpp_print_heap(const heap_t *heap)
 
 	log(LOG_DEBUG, "total: %d blocks, %zu bytes\n", n_blocks, total_size);
 }
+#else
+#define hpp_print_heap(heap)
+#endif
 
 /* Create single file under base_path which handles all mappings via buddy allocator */
 /* That file might be placed on a NVDIMM namespace. */

@@ -9,6 +9,7 @@
 int main(void)
 {
 	void *blocks[N_BLOCKS] = { NULL };
+	int failed_allocs = 0;
 
 	srand(0);
 
@@ -17,6 +18,10 @@ int main(void)
 	for (int i = 0; i < N_BLOCKS; i++) {
 		size_t block_size = (rand() % 128 + 1) * (1U << 19);
 		blocks[i] = hpp_alloc(block_size, 1);
+		if (blocks[i] == NULL) {
+			failed_allocs++;
+			fprintf(stderr, "allocation of block %i (%zu Bytes) failed\n", i, block_size);
+		}
 
 		/* free a random block with 10% probability */
 		if (rand() % 10 == 0) {
@@ -39,4 +44,8 @@ int main(void)
 		}
 	}
 
+	if (failed_allocs > 0) {
+		fprintf(stderr, "%d allocations failed\n", failed_allocs);
+	}
+	return failed_allocs > 0 ? 1 : 0;
 }

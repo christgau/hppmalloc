@@ -2,6 +2,7 @@
 
 # relaxed heap size
 export HPPA_SIZE_ANON=$((1024*1024*1024))
+export HPPA_LOGLEVEL=debug
 
 lib_dir=$(realpath $PWD/..)
 buffer="$(LD_PRELOAD="$lib_dir/libhppahook.so" ./hook)"

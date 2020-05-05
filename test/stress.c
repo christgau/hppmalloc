@@ -4,19 +4,26 @@
 
 #include "hppalloc.h"
 
-#define N_BLOCKS 128
-
-int main(void)
+int main(int argc, char** argv)
 {
-	void *blocks[N_BLOCKS] = { NULL };
+	int n_blocks = 64;
+	if (argc > 1) {
+		n_blocks = atoi(argv[1]);
+	}
+
+	void *blocks[n_blocks];
 	int failed_allocs = 0;
 
 	srand(0);
+	for (int i = 0; i < n_blocks; i++) {
+		blocks[i] = NULL;
+	}
 
-	/* try several random sizes (maybe) including allocations 
+	/* try several random sizes (maybe) including allocations
 	 * smaller than the hugepage size */
-	for (int i = 0; i < N_BLOCKS; i++) {
+	for (int i = 0; i < n_blocks; i++) {
 		size_t block_size = (rand() % 128 + 1) * (1U << 19);
+
 		blocks[i] = hpp_alloc(block_size, 1);
 		if (blocks[i] == NULL) {
 			failed_allocs++;
@@ -25,7 +32,7 @@ int main(void)
 
 		/* free a random block with 10% probability */
 		if (rand() % 10 == 0) {
-			int block = rand() % N_BLOCKS;
+			int block = rand() % n_blocks;
 			if (blocks[block]) {
 				hpp_free(blocks[block]);
 				blocks[block] = NULL;
@@ -38,7 +45,7 @@ int main(void)
 	}
 
 	/* finally, free all still reserved blocks */
-	for (int i = 0; i < N_BLOCKS; i++) {
+	for (int i = 0; i < n_blocks; i++) {
 		if (blocks[i]) {
 			hpp_free(blocks[i]);
 		}

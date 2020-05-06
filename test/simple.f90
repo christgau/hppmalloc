@@ -5,7 +5,7 @@ program simple
 !-- allocation strategy.
 
     use iso_c_binding, only: c_ptr, c_sizeof, c_f_pointer, c_size_t
-    use hppmalloc
+    use hppalloc
 
     implicit none
 
@@ -29,6 +29,8 @@ program simple
 
     allocate(f_r(N_LOW:N_HIGH))
     allocate(f_i(N_LOW:N_HIGH))
+
+    call hpp_set_mode(HPPA_AS_ALL)
 
     cptr_hpp_i = hpp_alloc(N_HIGH - N_LOW + 1_size_t_kind, storage_size(hpp_i) / 8_size_t_kind)
     cptr_hpp_r = hpp_alloc(N_HIGH - N_LOW + 1_size_t_kind, storage_size(hpp_r) / 8_size_t_kind)

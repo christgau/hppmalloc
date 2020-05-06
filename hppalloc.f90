@@ -1,8 +1,20 @@
 ! Fortran module for using hppmalloc C routines.
 !
- module hppmalloc
+ module hppalloc
 
     private
+
+    integer, parameter, public :: HPPA_AS_MALLOC = ishft(1, 0)
+    integer, parameter, public :: HPPA_AS_ANON   = ishft(1, 1)
+    integer, parameter, public :: HPPA_AS_NAMED  = ishft(1, 2)
+
+    integer, parameter, public :: HPPA_AS_PMEM   = HPPA_AS_NAMED
+
+    integer, parameter, public :: HPPA_AS_ALL    = ior(ior(HPPA_AS_MALLOC, HPPA_AS_ANON), HPPA_AS_NAMED)
+
+    integer, parameter, public :: HPPA_AS_NO_MALLOC = ior(HPPA_AS_ANON, HPPA_AS_NAMED)
+    integer, parameter, public :: HPPA_AS_NO_ANON   = ior(HPPA_AS_MALLOC, HPPA_AS_NAMED)
+    integer, parameter, public :: HPPA_AS_NO_NAMED  = ior(HPPA_AS_MALLOC, HPPA_AS_ANON)
 
     interface
 
@@ -26,7 +38,7 @@
         end subroutine
 
     end interface
-        
-    public hpp_alloc, hpp_free
+
+    public hpp_set_mode, hpp_alloc, hpp_free
 
  end module

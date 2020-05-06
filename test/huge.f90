@@ -1,7 +1,7 @@
 program simple
 
     use iso_c_binding, only: c_ptr, c_size_t
-    use hppmalloc
+    use hppalloc
 
     implicit none
 

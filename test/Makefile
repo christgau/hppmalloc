@@ -4,7 +4,7 @@ LDFLAGS=-lhppalloc -L..
 CFLAGS=-O0 -g -Wall -Wextra -pedantic -Wl,--rpath=.. -I.. -std=c99 $(LDFLAGS)
 FFLAGS=-O0 -g -Wall -Wextra -pedantic -Wl,--rpath=.. -I.. -fcheck=all -fbacktrace -fdump-fortran-optimized -cpp
 
-TESTS=simple huge toohuge alloc_seq stress hook
+TESTS=simple huge toohuge alloc_seq stress hook shadow
 
 .PHONY: test
 

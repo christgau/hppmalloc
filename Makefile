@@ -27,4 +27,4 @@ test: $(LIBRARY_NAME)
 
 clean:
 	make -C test clean
-	rm -f *.o $(LIBRARY_NAME) $(HOOK_LIBRARY_NAME)
+	rm -f *.o $(LIBRARY_NAME) $(HOOK_LIBRARY_NAME) *.mod

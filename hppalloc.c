@@ -370,7 +370,7 @@ static void hpp_block_free(heap_t *heap, heap_block_t *block)
 
 void hpp_set_mode(int mode)
 {
-	hpp_mode |= (mode & HPPA_AS_MASK);
+	hpp_mode = (hpp_mode & ~HPPA_AS_MASK) | (mode & HPPA_AS_MASK);
 }
 
 void* hpp_alloc(size_t n, size_t elem_size)

@@ -13,13 +13,15 @@
    real, dimension(:,:,:), allocatable :: r
    integer, dimension(:,:), allocatable :: i
 
+   integer :: old_mode
+
    !-- use "large" array's that exceed the default allocation threshold
    !-- r => 64 to 128 MB
    !-- i => should be 4+ MB
 
 !- disable malloc for subsequent allocations. Without LD_PRELOAD
 !- this has no effect besides changing the internal state of the lib.
-   call hpp_set_mode(HPPA_AS_NO_MALLOC)
+   old_mode = hpp_set_mode(HPPA_AS_NO_MALLOC)
 
    allocate (r(256,256,256), i(1024,1111))
 

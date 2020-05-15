@@ -238,7 +238,7 @@ void hpp_init_log_level(const char* s)
 {
 	/* lazy here */
 	int level = size_from_s(s, 0xFF);
-	
+
 	if (level >= LOG_EMERG && level <= LOG_DEBUG) {
 		log_level = level;
 	}
@@ -368,9 +368,12 @@ static void hpp_block_free(heap_t *heap, heap_block_t *block)
 	}
 }
 
-void hpp_set_mode(int mode)
+int hpp_set_mode(int mode)
 {
+    int retval = hpp_mode & HPPA_AS_MASK;
 	hpp_mode = (hpp_mode & ~HPPA_AS_MASK) | (mode & HPPA_AS_MASK);
+
+    return retval;
 }
 
 void* hpp_alloc(size_t n, size_t elem_size)

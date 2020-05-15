@@ -24,13 +24,14 @@ program simple
     real, dimension(:), pointer :: hpp_r
     integer, dimension(:), allocatable :: f_i
     integer, dimension(:), pointer :: hpp_i
+    integer :: old_mode
 
     type(c_ptr) :: cptr_hpp_r, cptr_hpp_i
 
     allocate(f_r(N_LOW:N_HIGH))
     allocate(f_i(N_LOW:N_HIGH))
 
-    call hpp_set_mode(HPPA_AS_ALL)
+    old_mode = hpp_set_mode(HPPA_AS_ALL)
 
     cptr_hpp_i = hpp_alloc(N_HIGH - N_LOW + 1_size_t_kind, storage_size(hpp_i) / 8_size_t_kind)
     cptr_hpp_r = hpp_alloc(N_HIGH - N_LOW + 1_size_t_kind, storage_size(hpp_r) / 8_size_t_kind)

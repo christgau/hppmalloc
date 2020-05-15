@@ -48,7 +48,7 @@ The library offers two memory allocation functions
    The counterpart for hppalloc. Removes the allocation from memory. It is safe
    to call this function with `NULL` as argument.
 
-3. `void hpp_set_mode(int mode)`
+3. `int hpp_set_mode(int mode)`
    Set the mode used internally for the memory allocation. The mode steers how
    `hpp_alloc` behaves. This mode can be a bitwise OR-combination of the
    following values
@@ -62,6 +62,9 @@ The library offers two memory allocation functions
      the huge page mapping, the named/file mapping is used to satisfy the
      allocation. This mode effectively disables the `HPPA_AS_ANON` mode, even
      when both are specified (this may be subject to change).
+
+   The function returns the old operation mode which was active before the
+   function was called.
 
 For all these function, a Fortran (2003+) binding exists.
 

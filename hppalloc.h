@@ -23,7 +23,8 @@
 #define HPPA_AS_NO_ANON    (~HPPA_AS_ANON & HPPA_AS_MASK)
 #define HPPA_AS_NO_NAMED   (~HPPA_AS_NAMED & HPPA_AS_MASK)
 
-void hpp_set_mode(int mode);
+/* set the mode and return the old one */
+int hpp_set_mode(int mode);
 
 void* hpp_alloc(size_t n, size_t elem_size);
 void hpp_free(void *ptr);

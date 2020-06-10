@@ -53,6 +53,7 @@ extern void (*hpp_libc_free)(void *ptr);
 #define ENV_HEAPSIZE_NAMED "HPPA_SIZE_NAMED"
 #define ENV_INITAS "HPPA_INITIAL_STRATEGY"
 #define ENV_LOGLEVEL "HPPA_LOGLEVEL"
+#define ENV_POOLPAGE_SIZE_MB "HPPA_POOLPAGE_SIZE_MB"
 
 #ifndef MAP_HUGE_1GB
 #define MAP_HUGE_SHIFT 26
@@ -203,8 +204,18 @@ static bool hpp_init_anon_mappings(heap_t* heap)
 		return false;
 	}
 
+	size_t desired_page_size = 0;
+	if (getenv(ENV_POOLPAGE_SIZE_MB)) {
+		desired_page_size = atoi(getenv(ENV_POOLPAGE_SIZE_MB)) * 1024 * 1024;
+	}
+
 	for (size_t i = 0; i < sizeof(page_types) / sizeof(page_types[0]); i++) {
 		struct page_type pt = page_types[i];
+
+		if (desired_page_size != 0 && pt.size != desired_page_size) {
+			continue;
+		}
+
 		size_t mmap_size = ROUND_DOWN_MULTIPLE(heap->size, pt.size);
 		heap->pool = mmap(NULL, mmap_size, MMAP_PROT, pt.map_flags, -1, 0);
 		if (heap->pool != MAP_FAILED) {

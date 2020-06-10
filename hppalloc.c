@@ -419,9 +419,9 @@ void* hpp_alloc(size_t n, size_t elem_size)
 			retval = hpp_block_alloc(heap, alloc_size);
 
 			if (!retval) {
-				log(LOG_DEBUG, "failed to alloc %zu * %zu Bytes = %zu Bytes\n", n, elem_size, alloc_size);
+				log(LOG_WARNING, "failed to alloc %zu * %zu Bytes = %zu Bytes (%s)\n", n, elem_size, alloc_size, heap->name);
 			} else {
-				log(LOG_DEBUG, "allocated %zu * %zu Bytes => %zu Bytes @ %p\n", n, elem_size, alloc_size, retval);
+				log(LOG_WARNING, "allocated %zu * %zu Bytes => %zu Bytes @ %p (%s)\n", n, elem_size, alloc_size, retval, heap->name);
 			}
 			hpp_print_heap(heap);
 		}

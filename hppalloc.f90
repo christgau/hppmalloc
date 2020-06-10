@@ -9,6 +9,7 @@
     integer, parameter, public :: HPPA_AS_NAMED  = ishft(1, 2)
 
     integer, parameter, public :: HPPA_AS_PMEM   = HPPA_AS_NAMED
+    integer, parameter, public :: HPPA_AS_DRAM   = HPPA_AS_ANON
 
     integer, parameter, public :: HPPA_AS_ALL    = ior(ior(HPPA_AS_MALLOC, HPPA_AS_ANON), HPPA_AS_NAMED)
 

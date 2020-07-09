@@ -16,6 +16,7 @@
     integer, parameter, public :: HPPA_AS_NO_MALLOC = ior(HPPA_AS_ANON, HPPA_AS_NAMED)
     integer, parameter, public :: HPPA_AS_NO_ANON   = ior(HPPA_AS_MALLOC, HPPA_AS_NAMED)
     integer, parameter, public :: HPPA_AS_NO_NAMED  = ior(HPPA_AS_MALLOC, HPPA_AS_ANON)
+    integer, parameter, public :: HPPA_AS_NO_PMEM   = HPPA_AS_NO_NAMED
 
     interface
 

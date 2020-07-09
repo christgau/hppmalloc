@@ -116,6 +116,8 @@ static void hpp_init_pooled_heap(heap_t *heap)
 	heap->next = (heap_block_t*) heap->pool;
 	heap->next->size = heap->size & BLOCK_MASK_SIZE;
 	heap->next->prev = NULL;
+
+	log(LOG_INFO, "heap %s with %zu MB initialized at %p\n", heap->name, heap->size >> 20UL, heap->pool);
 }
 
 #ifdef DEBUG
@@ -185,7 +187,7 @@ static bool hpp_init_file_backed_mappings(heap_t* heap)
 	}
 
 	if (madvise(heap->pool, heap->size, MADV_WILLNEED | MADV_HUGEPAGE | MADV_DONTFORK)) {
-		log(LOG_WARNING, "madvise failed: %s (%d), but going ahead", strerror(errno), errno);
+		log(LOG_WARNING, "madvise failed: %s (%d), but going ahead...\n", strerror(errno), errno);
 	}
 
 	/* according to mmap(2) it is safe to close the file after mmap
@@ -282,6 +284,10 @@ static void hpp_init(void)
 			(strtol(getenv(ENV_INITAS), NULL, 10) & HPPA_AS_MASK);
 	}
 
+#ifdef DEBUG
+	hpp_init_log_level(getenv(ENV_LOGLEVEL));
+#endif
+
 	alloc_threshold = size_from_s(getenv(ENV_ALLOCTHRES), MIN_HUGE_PAGE_SIZE);
 	anon_heap.size = size_from_s(getenv(ENV_HEAPSIZE_ANON), anon_heap.size);
 	named_heap.size = size_from_s(getenv(ENV_HEAPSIZE_NAMED), named_heap.size);
@@ -293,10 +299,6 @@ static void hpp_init(void)
 	if (!hpp_init_anon_mappings(&anon_heap)) {
 		log(LOG_ERR, "Unable to init via hugepage mmap. Please, check available hugepages!\n");
 	}
-
-#ifdef DEBUG
-	hpp_init_log_level(getenv(ENV_LOGLEVEL));
-#endif
 
 	hpp_print_heap(&named_heap);
 	hpp_print_heap(&anon_heap);
@@ -419,9 +421,9 @@ void* hpp_alloc(size_t n, size_t elem_size)
 			retval = hpp_block_alloc(heap, alloc_size);
 
 			if (!retval) {
-				log(LOG_WARNING, "failed to alloc %zu * %zu Bytes = %zu Bytes (%s)\n", n, elem_size, alloc_size, heap->name);
+				log(LOG_WARNING, "failed to alloc %zu * %zu Bytes = %zu MB (%s)\n", n, elem_size, alloc_size >> 20UL, heap->name);
 			} else {
-				log(LOG_WARNING, "allocated %zu * %zu Bytes => %zu Bytes @ %p (%s)\n", n, elem_size, alloc_size, retval, heap->name);
+				log(LOG_WARNING, "allocated %zu * %zu Bytes => %zu MB @ %p (%s)\n", n, elem_size, alloc_size >> 20UL, retval, heap->name);
 			}
 			hpp_print_heap(heap);
 		}
@@ -429,6 +431,10 @@ void* hpp_alloc(size_t n, size_t elem_size)
 
 	if (!retval && (hpp_mode & HPPA_AS_MALLOC)) {
 		retval = hpp_libc_malloc(alloc_size);
+	}
+
+	if (!retval) {
+		log(LOG_CRIT, "allocation of %zu MB (%zu Bytes) failed. Mode was 0x%x\n", alloc_size >> 20UL, alloc_size, hpp_mode);
 	}
 
 	return retval;
